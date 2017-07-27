@@ -3,7 +3,7 @@
  Plugin Name: Revisionize
  Plugin URI: https://github.com/jamiechong/revisionize
  Description: Stage revisions or variations of live, published content. Publish the staged content manually or with the built-in scheduling system. 
- Version: 1.2.1
+ Version: 1.3.0
  Author: Jamie Chong
  Author URI: http://jamiechong.ca
  Text Domain: revisionize
@@ -110,6 +110,16 @@ function create_revision($post, $is_original=false) {
     delete_post_meta($post->ID, '_post_original');
   }
 
+	if ( $is_original && $new_id && !is_wp_error( $new_id ) ) {
+		$revisions = get_post_meta( $post->ID, '_post_revisions', true );
+		if ( empty( $revisions ) ) {
+			$revisions = array();
+		}
+
+		$revisions[ $new_id ] = $new_id;
+		update_post_meta( $post->ID, '_post_revisions', $revisions );
+	}
+
   return $new_id;
 }
 
@@ -143,6 +153,13 @@ function on_delete_post($post_id) {
   if ($parent_id && is_original_post($post)) {
     update_post_meta($parent_id, '_post_original', true);
   }
+
+	if ( is_revision_post( $post ) && $parent_id ) {
+		$revisions = get_post_meta( $parent_id, '_post_revisions', true );
+		unset( $revisions[ $post_id ] );
+		update_post_meta( $parent_id, '_post_revisions', $revisions );
+	}
+
 }
 
 function copy_post($post, $to=null, $parent_id=null, $status='draft') {
@@ -299,6 +316,32 @@ function notice() {
   </div>
   <?php
   endif;
+
+	if ( $screen->base == 'post' && empty( $parent ) ):
+		$revision_ids = get_post_meta( $post->ID, '_post_revisions', true );
+	    if (!empty($revision_ids)) :
+            $revisions = get_posts( array(
+                'post_type'   => $post->post_type,
+                'post_status' => 'any',
+                'order'       => 'DESC',
+                'orderby'     => 'modified',
+                'post__in'    => $revision_ids
+            ) );
+		?>
+            <div class="notice notice-warning">
+                <p class="notice-title"><?php echo sprintf( __( 'This post has %s Revisions ', REVISIONIZE_I18N_DOMAIN ), count( $revisions ) ); ?></p>
+                <ul>
+                    <?php foreach ( $revisions as $revision ): ?>
+                        <li>
+                            <?php $author = get_userdata( $revision->post_author ); ?>
+                            <a href="<?php echo get_edit_post_link( $revision->ID ); ?>"><?php echo mysql2date( 'F jS, Y - g:i:s A', $revision->post_modified ); ?></a> by <?php echo esc_html( $author->user_nicename ); ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+            <?php
+        endif;
+	endif;
 }
 
 // -- Helpers
